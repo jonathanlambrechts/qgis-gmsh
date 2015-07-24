@@ -4,9 +4,7 @@ email=jonathan.lambrechts@uclouvain.be
 author=Jonathan Lambrechts
 qgisMinimumVersion=2.0
 description=This is a plugin to interract with the GMSH mesh generator (see http://geuz.org/gmsh).
-    Currently the only function is to export current map as as .geo file. All polygones, lines and multilines of the visible layers are exported if they contain a \"mesh_size\" field. This field is used to determine the size of the elements. The generated file can be meshed by GMSH.
-about=This paragraph can contain a detailed description
-    of the plugin. Multiline is allowed, HTML is not.
+about= The only feature is to export current map as as .geo file. All polygones, lines and multilines of the visible layers are exported if they contain a \"mesh_size\" field. This field is used to determine the size of the elements. The generated file can be meshed by GMSH.
 version=version 0.1
 tracker=http://bugs.itopen.it
 repository=http://www.itopen.it/repo
