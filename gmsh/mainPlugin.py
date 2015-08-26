@@ -1,3 +1,6 @@
+# author  : Jonathan Lambrechts jonathan.lambrechts@uclouvain.be
+# licence : GPLv2 (see LICENSE.md)
+
 import exportGeometry
 import runGmsh
 import loadMsh

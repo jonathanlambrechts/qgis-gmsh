@@ -1,3 +1,6 @@
+# author  : Jonathan Lambrechts jonathan.lambrechts@uclouvain.be
+# licence : GPLv2 (see LICENSE.md)
+
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 from qgis.core import *
@@ -116,7 +119,7 @@ class geoWriter :
         self.geof.write("Plane Surface(IS) = {ILL:ILL+%d};\n" % (self.ill - 1))
         self.geof.write("Physical Surface(\"Domain\") = {IS};\n")
         for tag, ids in self.physicals.iteritems() :
-            self.geof.write("Physical Line(\"" + tag + "\") = {" + ",".join(str(i) for i in ids) + "};\n")
+            self.geof.write("Physical Line(\"" + tag + "\") = {" + ",".join(("IL + " + str(i)) for i in ids) + "};\n")
         self.geof.close()
 
 

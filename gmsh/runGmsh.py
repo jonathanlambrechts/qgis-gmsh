@@ -1,3 +1,6 @@
+# author  : Jonathan Lambrechts jonathan.lambrechts@uclouvain.be
+# licence : GPLv2 (see LICENSE.md)
+
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 from qgis.core import *

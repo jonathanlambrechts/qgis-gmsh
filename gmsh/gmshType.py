@@ -1,3 +1,6 @@
+# author  : Jonathan Lambrechts jonathan.lambrechts@uclouvain.be
+# licence : GPLv2 (see LICENSE.md)
+
 class MshBaseElementType :
   def __init__(self, name, tag, dimension) :
     self.name = name

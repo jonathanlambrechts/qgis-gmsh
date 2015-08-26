@@ -1,14 +1,14 @@
 # qgis-gmsh
-This is a plugin to interract with the GMSH mesh generator (http://geuz.org/gmsh).
+Generate geometry input files for the GMSH mesh generator (http://geuz.org/gmsh) and convert the GMSH mesh file to shapefiles that can be imported into QGIS.
 The [nightly snaphshot](http://geuz.org/gmsh/#Download) version of GMSH is required to mesh the generated .geo files.
 
 
 ## Installation
-Copy the gmsh directory in ~/.qgis2/python/plugin/. Then enable it through the "Plugins>Manage and Install Plugins..." menu.
+Copy the `gmsh` sub-directory in ~/.qgis2/python/plugin/. Then enable it through the "Plugins>Manage and Install Plugins..." menu.
 
 ## Usage
-Currently, the only feature is to export the project as a .geo file to be meshed with GMSH.
-It is accessible through the menu "Plugins>Gmsh>Export as Geo file". All polygones, lines and multilines of the visible layers are exported if those layers contain a "mesh_size" field. This field is used to determine the size of the elements.
+The different actions are accessible through the "Plugins >Gmsh" menu.
+See the tutorial on the [wiki page](https://github.com/ccorail/qgis-gmsh/wiki).
 
 ## References
 - **QGIS Geographic Information System.** Open Source Geospatial Foundation Project. http://qgis.osgeo.org
