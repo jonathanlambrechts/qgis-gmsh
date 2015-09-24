@@ -53,6 +53,8 @@ class geoWriter :
         self.geof.write("ILL = newll;\n")
         self.physicals = {}
         self.lineloops = []
+        self.lineInSurface = []
+        self.pointInSurface = []
 
     def writePoint(self, pt, lc) :
         if lc is not None :
@@ -85,7 +87,13 @@ class geoWriter :
         self.ill += 1
         return self.ill - 1
 
-    def addLineFromCoords(self, pts, xform, lc, physical) :
+    def addPointFromCoordInside(self, pt, xform, lc) :
+        if xform :
+            pt = xform.transform(pt)
+        id0 = self.writePointCheckLineLoops(pt, lc)
+        self.pointInSurface += [id0]
+
+    def addLineFromCoords(self, pts, xform, lc, physical, inside) :
         if xform :
             pts = [xform.transform(x) for x in pts]
         firstp = self.ip
@@ -101,12 +109,16 @@ class geoWriter :
                 self.physicals[physical].append(lid)
             else :
                 self.physicals[physical] = [lid]
-        ll = lineloop(pts[0], pts[-1], id0, id1, lid)
-        self.lineloops = [o for o in self.lineloops if not ll.merge(o)]
-        if ll.closed() :
-            self.writeLineLoop(ll)
-        else:
-            self.lineloops.append(ll)
+        if inside :
+            self.lineInSurface += [lid]
+            self.pointInSurface += ids
+        if not inside :
+            ll = lineloop(pts[0], pts[-1], id0, id1, lid)
+            self.lineloops = [o for o in self.lineloops if not ll.merge(o)]
+            if ll.closed() :
+                self.writeLineLoop(ll)
+            else:
+                self.lineloops.append(ll)
 
     def setBackgroundField(self, filename) :
         self.geof.write("NF = newf;\n")
@@ -118,6 +130,10 @@ class geoWriter :
     def __del__(self) :
         self.geof.write("Plane Surface(IS) = {ILL:ILL+%d};\n" % (self.ill - 1))
         self.geof.write("Physical Surface(\"Domain\") = {IS};\n")
+        if self.lineInSurface :
+            self.geof.write("Line {" + ",".join(["IP+%d" % i for i in self.lineInSurface]) + "} In Surface{IS};\n")
+        if self.pointInSurface :
+            self.geof.write("Point {" + ",".join(["IL+%d" % i for i in self.pointInSurface]) + "} In Surface{IS};\n")
         for tag, ids in self.physicals.iteritems() :
             self.geof.write("Physical Line(\"" + tag + "\") = {" + ",".join(("IL + " + str(i)) for i in ids) + "};\n")
         self.geof.close()
@@ -144,7 +160,7 @@ def writeRasterLayer(layer, filename) :
     return True
 
 
-def exportGeo(filename, layers, sizeLayer, crs) :
+def exportGeo(filename, layers, insideLayers, sizeLayer, crs) :
     nFeatures = sum((layer.featureCount()for layer in layers))
     progress = QProgressDialog("Exporting geometry...", "Abort", 0, nFeatures)
     progress.setMinimumDuration(0)
@@ -154,8 +170,7 @@ def exportGeo(filename, layers, sizeLayer, crs) :
 
     if sizeLayer :
         crs = sizeLayer.crs()
-    i = 0
-    for layer in layers :
+    def addLayer(layer, progress, inside) :
         name = layer.name()
         fields = layer.pendingFields()
         mesh_size_idx = fields.fieldNameIndex("mesh_size")
@@ -164,24 +179,31 @@ def exportGeo(filename, layers, sizeLayer, crs) :
         lc = None
         physical = None
         for feature in layer.getFeatures() :
-            progress.setValue(i)
+            progress.setValue(progress.value() + 1)
             if progress.wasCanceled():
                 return False
-            i += 1
             geom = feature.geometry()
             if mesh_size_idx >= 0 :
                 lc = feature[mesh_size_idx]
             if physical_idx >= 0 :
                 physical = feature[physical_idx]
             if geom.type() == QGis.Polygon :
-                geo.addLineFromCoords(geom.asPolygon()[0], xform, lc, physical)
+                geo.addLineFromCoords(geom.asPolygon()[0], xform, lc, physical, inside)
             elif geom.type() == QGis.Line :
                 lines = geom.asMultiPolyline()
                 if not lines :
-                    geo.addLineFromCoords(geom.asPolyline(), xform, lc, physical)
+                    geo.addLineFromCoords(geom.asPolyline(), xform, lc, physical, inside)
                 else :
                     for line in lines :
-                        geo.addLineFromCoords(line, xform, lc, physical)
+                        geo.addLineFromCoords(line, xform, lc, physical, inside)
+            elif geom.type() == QGis.Point :
+                point = geom.asPoint()
+                progress.setValue(progress.value() + 1)
+                geo.addPointFromCoordInside(point, xform, lc)
+    for l in layers :
+        addLayer(l, progress, False)
+    for l in insideLayers :
+        addLayer(l, progress, True)
     del progress
     if sizeLayer :
         if not writeRasterLayer(sizeLayer, basename + ".dat") :
@@ -199,6 +221,8 @@ class Dialog(QDialog) :
         layout = QVBoxLayout()
         self.geometrySelector = QListWidget()
         tools.TitleLayout("Mesh Boundaries", self.geometrySelector, layout)
+        self.insideSelector = QListWidget()
+        tools.TitleLayout("Forced line and points", self.insideSelector, layout)
         self.meshSizeSelector = QComboBox(self)
         self.meshSizeSelector.currentIndexChanged.connect(self.onMeshSizeSelectorActivated)
         tools.TitleLayout("Mesh size layer", self.meshSizeSelector, layout)
@@ -217,20 +241,33 @@ class Dialog(QDialog) :
 
     def validate(self) :
         outputFile = self.outputFile.getFile()
-        something = any((self.geometrySelector.item(i).checkState() == Qt.Checked for i in range(self.geometrySelector.count())))
-        if outputFile != "" and something :
-            self.runLayout.runButton.setEnabled(True)
-        else :
-            self.runLayout.runButton.setEnabled(False)
-
-    def saveGeo(self) :
-        filename = self.outputFile.getFile()
-        ignoredLayers = []
+        something = False
         activeLayers = []
         for i in range(self.geometrySelector.count()) :
             item = self.geometrySelector.item(i)
             if item.checkState() == Qt.Checked :
+                activeLayers += [item.data(Qt.UserRole).id()]
+        for i in range(self.insideSelector.count()) :
+            item = self.insideSelector.item(i)
+            if item.data(Qt.UserRole).id() in activeLayers :
+                item.setFlags(item.flags() & ~Qt.ItemIsEnabled)
+            else :
+                item.setFlags(item.flags() | Qt.ItemIsEnabled)
+
+        self.runLayout.runButton.setEnabled(bool(outputFile != "" and  activeLayers))
+
+    def saveGeo(self) :
+        filename = self.outputFile.getFile()
+        ignoredLayers = []
+        insideLayers = []
+        activeLayers = []
+        for i in range(self.geometrySelector.count()) :
+            item = self.geometrySelector.item(i)
+            itemi = self.insideSelector.item(i)
+            if item.checkState() == Qt.Checked :
                 activeLayers += [item.data(Qt.UserRole)]
+            elif itemi.checkState() == Qt.Checked:
+                insideLayers += [item.data(Qt.UserRole)]
             else :
                 ignoredLayers += [item.data(Qt.UserRole)]
         meshSizeLayer = self.meshSizeSelector.itemData(self.meshSizeSelector.currentIndex())
@@ -240,9 +277,10 @@ class Dialog(QDialog) :
         proj = QgsProject.instance()
         proj.writeEntry("gmsh", "geo_file", filename)
         proj.writeEntry("gmsh", "ignored_boundary_layers", "%%".join((l.id() for l in ignoredLayers)))
+        proj.writeEntry("gmsh", "inside_layers", "%%".join((l.id() for l in insideLayers)))
         proj.writeEntry("gmsh", "projection",crs.authid())
         proj.writeEntry("gmsh", "mesh_size_layer", "None" if meshSizeLayer is None else meshSizeLayer.id())
-        status = exportGeo(filename, activeLayers, meshSizeLayer, crs)
+        status = exportGeo(filename, activeLayers, insideLayers, meshSizeLayer, crs)
         self.close()
         if status :
             self.meshDialog.exec_()
@@ -261,6 +299,7 @@ class Dialog(QDialog) :
         proj = QgsProject.instance()
         self.outputFile.setFile(proj.readEntry("gmsh", "geo_file", "")[0])
         ignoredLayers = set(proj.readEntry("gmsh", "ignored_boundary_layers", "")[0].split("%%"))
+        insideLayers = set(proj.readEntry("gmsh", "inside_layers", "")[0].split("%%"))
         meshSizeLayerId = proj.readEntry("gmsh", "mesh_size_layer", "None")[0]
         projid = proj.readEntry("gmsh", "projection", "")[0]
         crs = None
@@ -271,19 +310,25 @@ class Dialog(QDialog) :
         self.projectionButton.setCrs(crs)
         layers = self.iface.legendInterface().layers()
         self.geometrySelector.clear()
+        self.insideSelector.clear()
         self.meshSizeSelector.clear()
         self.meshSizeSelector.addItem("None", None)
         for layer in layers :
             if layer.type() == QgsMapLayer.VectorLayer :
                 item = QListWidgetItem(layer.name(), self.geometrySelector)
                 item.setData(Qt.UserRole, layer)
-                item.setFlags(item.flags() or ItemIsCheckable)
-                item.setCheckState(Qt.Unchecked if layer.id() in ignoredLayers else Qt.Checked)
+                item.setFlags(item.flags() & ~ Qt.ItemIsSelectable)
+                item.setCheckState(Qt.Unchecked if (layer.id() in ignoredLayers or layer.id() in insideLayers) else Qt.Checked)
+                item = QListWidgetItem(layer.name(), self.insideSelector)
+                item.setData(Qt.UserRole, layer)
+                item.setFlags(item.flags() & ~ Qt.ItemIsSelectable)
+                item.setCheckState(Qt.Checked if layer.id() in insideLayers else Qt.Unchecked)
             if layer.type() == QgsMapLayer.RasterLayer :
                 self.meshSizeSelector.addItem(layer.name(), layer)
                 if layer.id() == meshSizeLayerId :
                     self.meshSizeSelector.setCurrentIndex(self.meshSizeSelector.count() - 1)
         self.runLayout.setFocus()
+        self.validate()
         super(Dialog, self).exec_()
 
 
