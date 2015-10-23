@@ -183,6 +183,8 @@ def exportGeo(filename, layers, insideLayers, sizeLayer, crs) :
             if progress.wasCanceled():
                 return False
             geom = feature.geometry()
+            if geom is None :
+                continue
             if mesh_size_idx >= 0 :
                 lc = feature[mesh_size_idx]
             if physical_idx >= 0 :
