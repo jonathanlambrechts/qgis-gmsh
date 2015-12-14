@@ -5,6 +5,7 @@ from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 from qgis.core import *
 import tools
+import struct
 
 def samepoint(a, b) :
     return ((a[0] - b[0])**2 + (a[1] - b[1])**2)**0.5 < 1e-8
@@ -123,7 +124,7 @@ class geoWriter :
     def setBackgroundField(self, filename) :
         self.geof.write("NF = newf;\n")
         self.geof.write("Field[NF] = Structured;\n")
-        self.geof.write("Field[NF].TextFormat = 1;\n")
+        self.geof.write("Field[NF].TextFormat = 0;\n")
         self.geof.write("Field[NF].FileName = \"%s\";\n" % filename)
         self.geof.write("Background Field = NF;\n")
 
@@ -143,19 +144,19 @@ def writeRasterLayer(layer, filename) :
     progress = QProgressDialog("Writing mesh size layer...", "Abort", 0, layer.width())
     progress.setMinimumDuration(0)
     progress.setWindowModality(Qt.WindowModal)
-    f = open(filename, "w")
+    progress.setValue(0)
+    f = open(filename, "wb")
     ext = layer.extent()
-    f.write("%.16g %.16g 0\n" % (ext.xMinimum(), ext.yMinimum()))
-    f.write("%.16g %.16g 1\n" % (ext.width() / layer.width(), ext.height() / layer.height()))
-    f.write("%d %d 1\n" % (layer.width(), layer.height()))
+    f.write(struct.pack("3d", ext.xMinimum(), ext.yMinimum(), 0))
+    f.write(struct.pack("3d", ext.width() / layer.width(), ext.height() / layer.height(), 1))
+    f.write(struct.pack("3i", layer.width(), layer.height(), 1))
     block = layer.dataProvider().block(1, layer.extent(), layer.width(), layer.height())
     for j in range(layer.width()) : 
         progress.setValue(j)
         if progress.wasCanceled():
             return False
-        for i in range(layer.height() -1, -1, -1) :
-            f.write("%.2e " %  block.value(i, j))
-        f.write("\n")
+        v = list([block.value(i, j) for i in range(layer.height() -1, -1, -1)])
+        f.write(struct.pack("{}d".format(len(v)), *v))
     f.close()
     return True
 
