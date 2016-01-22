@@ -191,7 +191,8 @@ def exportGeo(filename, layers, insideLayers, sizeLayer, crs) :
             if physical_idx >= 0 :
                 physical = feature[physical_idx]
             if geom.type() == QGis.Polygon :
-                geo.addLineFromCoords(geom.asPolygon()[0], xform, lc, physical, inside)
+                for loop in geom.asPolygon() :
+                    geo.addLineFromCoords(loop, xform, lc, physical, inside)
             elif geom.type() == QGis.Line :
                 lines = geom.asMultiPolyline()
                 if not lines :
