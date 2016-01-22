@@ -5,7 +5,7 @@ author=Jonathan Lambrechts
 qgisMinimumVersion=2.0
 description=This is a plugin to interract with the GMSH mesh generator (see http://geuz.org/gmsh).
 about= Generate geometry input files for the GMSH mesh generator (http://geuz.org/gmsh) and convert the GMSH mesh file to shapefiles that can be imported into QGIS. The nightly snaphshot(http://geuz.org/gmsh/#Download) version of GMSH is required to mesh the generated .geo files. For more details, see this tutorial : https://github.com/ccorail/qgis-gmsh/wiki.
-version=version 0.1
+version=version 0.1.1
 tracker=https://github.com/ccorail/qgis-gmsh/issues
 repository=https://github.com/ccorail/qgis-gmsh/
 ; end of mandatory metadata

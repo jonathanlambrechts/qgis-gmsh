@@ -4,5 +4,5 @@ if [ -z "$VERS" ]; then
   exit
 fi
 git tag $VERS
-zip gmsh.zip gmsh-$VERS/*.py gmsh/metadata.txt gmsh/LICENSE.md
+zip gmsh-$VERS.zip gmsh/*.py gmsh/metadata.txt gmsh/LICENSE.md
 echo "upload manually gmsh-$VERS.zip to http://plugins.qgis.org/plugins/gmsh/version/add/"
