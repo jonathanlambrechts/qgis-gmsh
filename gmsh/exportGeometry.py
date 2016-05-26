@@ -12,10 +12,10 @@ def samepoint(a, b) :
 
 class lineloop :
     
-    def __init__(self, x0, x1, id0, id1, lineid) :
+    def __init__(self, x0, x1, id0, id1, lids) :
         self.id = [id0, id1]
         self.x = [x0, x1]
-        self.lines = [(lineid, True)]
+        self.lines = [(lid, True) for lid in lids]
     
     def reverse(self) :
         self.lines = [(id, not flag) for id, flag in self.lines[::-1]]
@@ -94,7 +94,7 @@ class geoWriter :
         id0 = self.writePointCheckLineLoops(pt, lc)
         self.pointInSurface += [id0]
 
-    def addLineFromCoords(self, pts, xform, lc, physical, inside) :
+    def addLineFromCoords(self, pts, xform, lc, physical, inside, forceAllBnd) :
         if xform :
             pts = [xform.transform(x) for x in pts]
         firstp = self.ip
@@ -104,17 +104,22 @@ class geoWriter :
         else :
             id1 = self.writePointCheckLineLoops(pts[-1], lc)
         ids = [id0] + [self.writePoint(x, lc) for x in pts[1:-1]] + [id1]
-        lid = self.writeLine(ids) 
+        if forceAllBnd :
+            lids = [self.writeLine((ids[i],ids[i+1])) for i in range(len(ids)-1)]
+        else :
+            lids = [self.writeLine(ids)] 
+
         if physical :
-            if self.physicals.has_key(physical) :
-                self.physicals[physical].append(lid)
-            else :
-                self.physicals[physical] = [lid]
+            for lid in lids :
+                if self.physicals.has_key(physical) :
+                    self.physicals[physical].append(lid)
+                else :
+                    self.physicals[physical] = [lid]
         if inside :
-            self.lineInSurface += [lid]
+            self.lineInSurface += lids
             self.pointInSurface += ids
         if not inside :
-            ll = lineloop(pts[0], pts[-1], id0, id1, lid)
+            ll = lineloop(pts[0], pts[-1], id0, id1, lids)
             self.lineloops = [o for o in self.lineloops if not ll.merge(o)]
             if ll.closed() :
                 self.writeLineLoop(ll)
@@ -161,7 +166,7 @@ def writeRasterLayer(layer, filename) :
     return True
 
 
-def exportGeo(filename, layers, insideLayers, sizeLayer, crs) :
+def exportGeo(filename, layers, insideLayers, sizeLayer, crs, forceAllBnd) :
     nFeatures = sum((layer.featureCount()for layer in layers))
     progress = QProgressDialog("Exporting geometry...", "Abort", 0, nFeatures)
     progress.setMinimumDuration(0)
@@ -192,14 +197,14 @@ def exportGeo(filename, layers, insideLayers, sizeLayer, crs) :
                 physical = feature[physical_idx]
             if geom.type() == QGis.Polygon :
                 for loop in geom.asPolygon() :
-                    geo.addLineFromCoords(loop, xform, lc, physical, inside)
+                    geo.addLineFromCoords(loop, xform, lc, physical, inside, forceAllBnd)
             elif geom.type() == QGis.Line :
                 lines = geom.asMultiPolyline()
                 if not lines :
-                    geo.addLineFromCoords(geom.asPolyline(), xform, lc, physical, inside)
+                    geo.addLineFromCoords(geom.asPolyline(), xform, lc, physical, inside, forceAllBnd)
                 else :
                     for line in lines :
-                        geo.addLineFromCoords(line, xform, lc, physical, inside)
+                        geo.addLineFromCoords(line, xform, lc, physical, inside, forceAllBnd)
             elif geom.type() == QGis.Point :
                 point = geom.asPoint()
                 progress.setValue(progress.value() + 1)
@@ -225,8 +230,10 @@ class Dialog(QDialog) :
         layout = QVBoxLayout()
         self.geometrySelector = QListWidget()
         tools.TitleLayout("Mesh Boundaries", self.geometrySelector, layout)
+        self.forceAllBndButton = QCheckBox("Force all boundary points")
+        layout.addWidget(self.forceAllBndButton)
         self.insideSelector = QListWidget()
-        tools.TitleLayout("Forced line and points", self.insideSelector, layout)
+        tools.TitleLayout("Forced line and points inside the domain", self.insideSelector, layout)
         self.meshSizeSelector = QComboBox(self)
         self.meshSizeSelector.currentIndexChanged.connect(self.onMeshSizeSelectorActivated)
         tools.TitleLayout("Mesh size layer", self.meshSizeSelector, layout)
@@ -240,6 +247,7 @@ class Dialog(QDialog) :
         self.geometrySelector.itemChanged.connect(self.validate)
         self.runLayout = tools.CancelRunLayout(self, "Generate geometry file", self.saveGeo, layout)
         self.setLayout(layout)
+        self.forceAllBndButton.stateChanged.connect(self.validate)
         self.iface = iface
         self.resize(max(450, self.width()), self.height())
 
@@ -278,13 +286,15 @@ class Dialog(QDialog) :
         crs = self.projectionButton.crs()
         if meshSizeLayer :
             crs = meshSizeLayer.crs()
+        forceAllBnd = self.forceAllBndButton.isChecked()
         proj = QgsProject.instance()
         proj.writeEntry("gmsh", "geo_file", filename)
         proj.writeEntry("gmsh", "ignored_boundary_layers", "%%".join((l.id() for l in ignoredLayers)))
         proj.writeEntry("gmsh", "inside_layers", "%%".join((l.id() for l in insideLayers)))
         proj.writeEntry("gmsh", "projection",crs.authid())
         proj.writeEntry("gmsh", "mesh_size_layer", "None" if meshSizeLayer is None else meshSizeLayer.id())
-        status = exportGeo(filename, activeLayers, insideLayers, meshSizeLayer, crs)
+        proj.writeEntry("gmsh", "force_all_boundary_points", "True" if forceAllBnd else "False")
+        status = exportGeo(filename, activeLayers, insideLayers, meshSizeLayer, crs, forceAllBnd)
         self.close()
         if status :
             self.meshDialog.exec_()
@@ -306,6 +316,8 @@ class Dialog(QDialog) :
         insideLayers = set(proj.readEntry("gmsh", "inside_layers", "")[0].split("%%"))
         meshSizeLayerId = proj.readEntry("gmsh", "mesh_size_layer", "None")[0]
         projid = proj.readEntry("gmsh", "projection", "")[0]
+        forceAllBnd = proj.readEntry("gmsh","force_all_boundary_points", "False")[0] == "True"
+        self.forceAllBndButton.setCheckState(Qt.Checked if forceAllBnd else Qt.Unchecked)
         crs = None
         if projid :
             crs = QgsCoordinateReferenceSystem(projid)
