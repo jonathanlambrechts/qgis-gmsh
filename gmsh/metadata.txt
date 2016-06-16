@@ -5,7 +5,7 @@ author=Jonathan Lambrechts
 qgisMinimumVersion=2.0
 description=This is a plugin to interract with the GMSH mesh generator (see http://geuz.org/gmsh).
 about= Generate geometry input files for the GMSH mesh generator (http://geuz.org/gmsh) and convert the GMSH mesh file to shapefiles that can be imported into QGIS. The nightly snaphshot(http://geuz.org/gmsh/#Download) version of GMSH is required to mesh the generated .geo files. For more details, see this tutorial : https://github.com/ccorail/qgis-gmsh/wiki.
-version=version 0.1.1
+version=version 0.1.2
 tracker=https://github.com/ccorail/qgis-gmsh/issues
 repository=https://github.com/ccorail/qgis-gmsh/
 ; end of mandatory metadata
@@ -13,6 +13,8 @@ repository=https://github.com/ccorail/qgis-gmsh/
 ; start of optional metadata
 category=Vector
 changelog=
+  0.1.3 bug fix when loading msh 3.0 file format
+  0.1.2 add an option to force all boundary points
   0.1.1 add point/line In Surface, ignore features without geometry, binary structured field in gmsh
   0.1   First testing release
 
@@ -27,7 +29,7 @@ homepage=https://github.com/ccorail/qgis-gmsh/
 ;icon=icon.png
 
 ; experimental flag (applies to the single version)
-experimental=True
+experimental=False
 
 ; deprecated flag (applies to the whole plugin and not only to the uploaded version)
 deprecated=False

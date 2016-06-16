@@ -87,7 +87,10 @@ def loadMsh(filename, crs, outputdir):
                 writer = entityWriter.get((edim, e), None)
                 if writer is None :
                     if useFormat3 :
-                        p = entityPhysicals[(edim, e)]
+                        if (edim, e) in entityPhysical :
+                            p = entityPhysical[(edim, e)]
+                        else :
+                            p = 0
                     writer = physicalWriter.get((edim, p), None)
                     if writer is None :
                         fields = QgsFields()
