@@ -1,10 +1,11 @@
 # author  : Jonathan Lambrechts jonathan.lambrechts@uclouvain.be
 # licence : GPLv2 (see LICENSE.md)
 
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
+from PyQt5.QtCore import Qt
+from PyQt5 import QtWidgets
 from qgis.core import *
-import tools
+from qgis.gui import QgsProjectionSelectionWidget
+from . import tools
 import struct
 
 def samepoint(a, b) :
@@ -76,7 +77,7 @@ class geoWriter :
         return self.writePoint(pt, lc)
 
     def writeLine(self, pts) :
-        self.geof.write("Line(IL+%d) = {IP+" % self.il +
+        self.geof.write("Spline(IL+%d) = {IP+" % self.il +
             ", IP+".join([str(i) for i in pts]) + "};\n")
         self.il += 1
         return self.il - 1
@@ -111,7 +112,7 @@ class geoWriter :
 
         if physical :
             for lid in lids :
-                if self.physicals.has_key(physical) :
+                if physical in self.physicals :
                     self.physicals[physical].append(lid)
                 else :
                     self.physicals[physical] = [lid]
@@ -140,13 +141,13 @@ class geoWriter :
             self.geof.write("Line {" + ",".join(["IP+%d" % i for i in self.lineInSurface]) + "} In Surface{IS};\n")
         if self.pointInSurface :
             self.geof.write("Point {" + ",".join(["IL+%d" % i for i in self.pointInSurface]) + "} In Surface{IS};\n")
-        for tag, ids in self.physicals.iteritems() :
+        for tag, ids in self.physicals.items() :
             self.geof.write("Physical Line(\"" + tag + "\") = {" + ",".join(("IL + " + str(i)) for i in ids) + "};\n")
         self.geof.close()
 
 
 def writeRasterLayer(layer, filename) :
-    progress = QProgressDialog("Writing mesh size layer...", "Abort", 0, layer.width())
+    progress = QtWidgets.QProgressDialog("Writing mesh size layer...", "Abort", 0, layer.width())
     progress.setMinimumDuration(0)
     progress.setWindowModality(Qt.WindowModal)
     progress.setValue(0)
@@ -168,7 +169,7 @@ def writeRasterLayer(layer, filename) :
 
 def exportGeo(filename, layers, insideLayers, sizeLayer, crs, forceAllBnd) :
     nFeatures = sum((layer.featureCount()for layer in layers))
-    progress = QProgressDialog("Exporting geometry...", "Abort", 0, nFeatures)
+    progress = QtWidgets.QProgressDialog("Exporting geometry...", "Abort", 0, nFeatures)
     progress.setMinimumDuration(0)
     progress.setWindowModality(Qt.WindowModal)
     geo = geoWriter(filename)
@@ -178,10 +179,10 @@ def exportGeo(filename, layers, insideLayers, sizeLayer, crs, forceAllBnd) :
         crs = sizeLayer.crs()
     def addLayer(layer, progress, inside) :
         name = layer.name()
-        fields = layer.pendingFields()
-        mesh_size_idx = fields.fieldNameIndex("mesh_size")
-        physical_idx = fields.fieldNameIndex("physical")
-        xform = QgsCoordinateTransform(layer.crs(), crs)
+        fields = layer.fields()
+        mesh_size_idx = fields.indexFromName("mesh_size")
+        physical_idx = fields.indexFromName("physical")
+        xform = QgsCoordinateTransform(layer.crs(), crs,QgsProject.instance())
         lc = None
         physical = None
         for feature in layer.getFeatures() :
@@ -195,17 +196,17 @@ def exportGeo(filename, layers, insideLayers, sizeLayer, crs, forceAllBnd) :
                 lc = feature[mesh_size_idx]
             if physical_idx >= 0 :
                 physical = feature[physical_idx]
-            if geom.type() == QGis.Polygon :
+            if geom.type() == QgsWkbTypes.PolygonGeometry :
                 for loop in geom.asPolygon() :
                     geo.addLineFromCoords(loop, xform, lc, physical, inside, forceAllBnd)
-            elif geom.type() == QGis.Line :
+            elif geom.type() == QgsWkbTypes.LineGeometry :
                 lines = geom.asMultiPolyline()
                 if not lines :
                     geo.addLineFromCoords(geom.asPolyline(), xform, lc, physical, inside, forceAllBnd)
                 else :
                     for line in lines :
                         geo.addLineFromCoords(line, xform, lc, physical, inside, forceAllBnd)
-            elif geom.type() == QGis.Point :
+            elif geom.type() == QgsWkbTypes.PointGeometry :
                 point = geom.asPoint()
                 progress.setValue(progress.value() + 1)
                 geo.addPointFromCoordInside(point, xform, lc)
@@ -221,25 +222,25 @@ def exportGeo(filename, layers, insideLayers, sizeLayer, crs, forceAllBnd) :
     return True
 
 
-class Dialog(QDialog) :
+class Dialog(QtWidgets.QDialog) :
 
     def __init__(self, mainWindow, iface, meshDialog) :
         super(Dialog, self).__init__(mainWindow)
         self.meshDialog = meshDialog
         self.setWindowTitle("Generate a Gmsh geometry file")
-        layout = QVBoxLayout()
-        self.geometrySelector = QListWidget()
+        layout = QtWidgets.QVBoxLayout()
+        self.geometrySelector = QtWidgets.QListWidget()
         tools.TitleLayout("Mesh Boundaries", self.geometrySelector, layout)
-        self.forceAllBndButton = QCheckBox("Force all boundary points")
+        self.forceAllBndButton = QtWidgets.QCheckBox("Force all boundary points")
         layout.addWidget(self.forceAllBndButton)
-        self.insideSelector = QListWidget()
+        self.insideSelector = QtWidgets.QListWidget()
         tools.TitleLayout("Forced line and points inside the domain", self.insideSelector, layout)
-        self.meshSizeSelector = QComboBox(self)
+        self.meshSizeSelector = QtWidgets.QComboBox(self)
         self.meshSizeSelector.currentIndexChanged.connect(self.onMeshSizeSelectorActivated)
         tools.TitleLayout("Mesh size layer", self.meshSizeSelector, layout)
-        self.projectionButton = tools.CRSButton()
+        self.projectionButton = QgsProjectionSelectionWidget()
         tools.TitleLayout("Projection", self.projectionButton, layout).label
-        self.projectionLabel = QLabel()
+        self.projectionLabel = QtWidgets.QLabel()
         layout.addWidget(self.projectionLabel)
         self.projectionLabel.hide()
         self.outputFile = tools.FileSelectorLayout("Output file", iface.mainWindow(), "save", "*.geo", layout)
@@ -324,18 +325,18 @@ class Dialog(QDialog) :
         if crs is None or not crs.isValid():
             crs = QgsCoordinateReferenceSystem("EPSG:4326")
         self.projectionButton.setCrs(crs)
-        layers = self.iface.legendInterface().layers()
+        layers = [tree_layer.layer() for tree_layer in QgsProject.instance().layerTreeRoot().findLayers()]
         self.geometrySelector.clear()
         self.insideSelector.clear()
         self.meshSizeSelector.clear()
         self.meshSizeSelector.addItem("None", None)
         for layer in layers :
             if layer.type() == QgsMapLayer.VectorLayer :
-                item = QListWidgetItem(layer.name(), self.geometrySelector)
+                item = QtWidgets.QListWidgetItem(layer.name(), self.geometrySelector)
                 item.setData(Qt.UserRole, layer)
                 item.setFlags(item.flags() & ~ Qt.ItemIsSelectable)
                 item.setCheckState(Qt.Unchecked if (layer.id() in ignoredLayers or layer.id() in insideLayers) else Qt.Checked)
-                item = QListWidgetItem(layer.name(), self.insideSelector)
+                item = QtWidgets.QListWidgetItem(layer.name(), self.insideSelector)
                 item.setData(Qt.UserRole, layer)
                 item.setFlags(item.flags() & ~ Qt.ItemIsSelectable)
                 item.setCheckState(Qt.Checked if layer.id() in insideLayers else Qt.Unchecked)
@@ -350,12 +351,12 @@ class Dialog(QDialog) :
 
 def createAction(iface, meshDialog) :
     dialog = Dialog(iface.mainWindow(), iface, meshDialog)
-    action = QAction("Generate a Gmsh geometry file", iface.mainWindow())
+    action = QtWidgets.QAction("Generate a Gmsh geometry file", iface.mainWindow())
     action.dialog = dialog
     action.setObjectName("GMSHExportGeo")
     action.setWhatsThis("Generate a Gmsh geometry file (.geo). Polygones, lines and multilines can be exported. The mesh size can be specified either by a \"mesh_size\" field on the featres or by a raster layer. The generated file can be meshed with Gmsh (http://geuz.org/gmsh).")
     action.setStatusTip("Generate a Gmsh geometry file (.geo).")
-    QObject.connect(action, SIGNAL("triggered()"), dialog.exec_)
+    action.triggered.connect(dialog.exec_)
     return action
 
 

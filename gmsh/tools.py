@@ -1,9 +1,10 @@
 # author  : Jonathan Lambrechts jonathan.lambrechts@uclouvain.be
 # licence : GPLv2 (see LICENSE.md)
 
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
-from qgis.gui import QgsGenericProjectionSelector
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QVBoxLayout,QHBoxLayout,QPushButton,QDialog,QLabel,QLineEdit,QFileDialog
+from PyQt5.QtGui import QIcon
+from qgis.gui import QgsProjectionSelectionTreeWidget
 from qgis.core import *
 
 
@@ -31,7 +32,7 @@ class FileSelectorLayout(QVBoxLayout) :
         self.addLayout(layout)
         fileButton = QPushButton("");
         fileButton.setIcon(QIcon.fromTheme("document-open"))
-        QObject.connect(fileButton, SIGNAL("clicked()"), self.browseFile)
+        fileButton.clicked.connect(self.browseFile)
         self.fileWidget = QLineEdit()
         self.fileWidget.setText(txt)
         layout.addWidget(self.fileWidget)
@@ -45,7 +46,7 @@ class FileSelectorLayout(QVBoxLayout) :
             filename = QFileDialog.getExistingDirectory(self.mainWindow,
                 self.title)
         else :
-            filename = QFileDialog.getOpenFileName(self.mainWindow,
+            filename,_ = QFileDialog.getOpenFileName(self.mainWindow,
                 self.title, filter=self.ext)
         if filename :
             self.setFile(filename)
@@ -64,32 +65,12 @@ class CancelRunLayout(QHBoxLayout) :
         parent.addLayout(self)
         self.addStretch(1)
         cancelButton = QPushButton("Cancel")
-        QObject.connect(cancelButton, SIGNAL("clicked()"), dialog.close)
+        cancelButton.clicked.connect(dialog.close)
         self.addWidget(cancelButton, 0)
         self.runButton = QPushButton(runTitle)
-        QObject.connect(self.runButton, SIGNAL("clicked()"), runCallback)
+        self.runButton.clicked.connect(runCallback)
         self.addWidget(self.runButton, 0)
 
     def setFocus(self) :
         self.runButton.setFocus()
 
-
-class CRSButton(QPushButton) :
-
-    def __init__(self) :
-        super(QPushButton, self).__init__()
-        self.crsDialog = QgsGenericProjectionSelector()
-        QObject.connect(self, SIGNAL("clicked()"), self.crsDialog.exec_)
-        QObject.connect(self, SIGNAL("clicked()"), self.update)
-        self._crs = None
-
-    def crs(self) :
-        return self._crs
-
-    def setCrs(self, cr) :
-        self._crs = cr
-        self.setText(cr.description())
-        self.crsDialog.setSelectedAuthId(cr.authid())
-
-    def update(self) :
-        self.setCrs(QgsCoordinateReferenceSystem(self.crsDialog.selectedAuthId()))

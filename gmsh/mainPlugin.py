@@ -1,9 +1,9 @@
 # author  : Jonathan Lambrechts jonathan.lambrechts@uclouvain.be
 # licence : GPLv2 (see LICENSE.md)
 
-import exportGeometry
-import runGmsh
-import loadMsh
+from . import exportGeometry
+from . import runGmsh
+from . import loadMsh
 
 class GmshPlugin:
 
@@ -19,6 +19,7 @@ class GmshPlugin:
         self.iface.addPluginToMenu("&Gmsh", self.loadMshAction)
 
     def unload(self):
+        pass
         self.iface.removePluginMenu("&Gmsh", self.geoAction)
         self.iface.removePluginMenu("&Gmsh", self.meshAction)
         self.iface.removePluginMenu("&Gmsh", self.loadMshAction)

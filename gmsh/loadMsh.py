@@ -1,15 +1,16 @@
 # author  : Jonathan Lambrechts jonathan.lambrechts@uclouvain.be
 # licence : GPLv2 (see LICENSE.md)
 
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
-from qgis.core import *
-import gmshType
+from PyQt5.QtCore import Qt,QDir,QThread,QFileInfo,QFile
+from PyQt5 import QtWidgets
+from qgis.core import QgsProject,QgsFields,QgsVectorFileWriter,QgsPointXY,QgsFeature,QgsWkbTypes,QgsGeometry,QgsCoordinateReferenceSystem,QgsVectorLayer
+from . import gmshType
 import os
-import tools
+from . import tools
+from qgis.gui import QgsProjectionSelectionWidget
 
 def loadMsh(filename, crs, outputdir):
-    progress = QProgressDialog("Converting GMSH mesh...", "Abort", 0, 100)
+    progress = QtWidgets.QProgressDialog("Converting GMSH mesh...", "Abort", 0, 100)
     progress.setMinimumDuration(1000)
     progress.setWindowModality(Qt.WindowModal)
     QDir().mkpath(outputdir)
@@ -29,7 +30,7 @@ def loadMsh(filename, crs, outputdir):
         w = l.split()
         if w[0] == "$MeshFormat":
             l = fin.readline().split()
-            if float(l[0]) == 3.:
+            if int(float(l[0])) == 3:
                 useFormat3 = True
             elif int(float(l[0])) == 2 :
                 useFormat3 = False 
@@ -43,23 +44,24 @@ def loadMsh(filename, crs, outputdir):
                 physicalNames[(int(dim), int(tag))] = name[1:-1]
             fin.readline()
         elif w[0] == "$Entities" and useFormat3:
-            n = int(fin.readline())
-            for i in range(n) :
-                l = fin.readline().split()
-                j, dim, nphys = int(l[0]), int(l[1]), int(l[2])
-                entityPhysical[(dim, j)] = int(l[3]) if nphys > 0 else None
-            fin.readline()
+            ns = list(int(fin.readline()) for i in range(4))
+            for dim in range (4) :
+                for i in range(ns[dim]) :
+                    l = fin.readline().split()
+                    j, nbnd = int(l[0]), int(l[1])
+                    nphys = int(l[2+nbnd])
+                    entityPhysical[(dim, j)] = int(l[2+nbnd+nphys]) if nphys > 0 else None
         elif w[0] == "$Nodes" :
             n = int(fin.readline())
             for i in range(n) :
                 if i % 1000 == 0 :
-                    QApplication.processEvents()
+                    QtWidgets.QApplication.processEvents()
                     progress.setValue((7 * i)/n)
                     if progress.wasCanceled():
                         abort()
                         return
                 if useFormat3 :
-                    (j, x, y, z, t) = fin.readline().split()
+                    j, x, y, z  = fin.readline().split()[:4]
                 else :
                     (j, x, y, z) = fin.readline().split()
                 vertices[int(j)] = [float(x), float(y), float(z), int(j)]
@@ -67,7 +69,7 @@ def loadMsh(filename, crs, outputdir):
             n = int(fin.readline())
             for i in range(n) :
                 if i % 100 == 0 :
-                    QApplication.processEvents()
+                    QtWidgets.QApplication.processEvents()
                     if progress.wasCanceled():
                         abort()
                         return
@@ -94,25 +96,25 @@ def loadMsh(filename, crs, outputdir):
                     writer = physicalWriter.get((edim, p), None)
                     if writer is None :
                         fields = QgsFields()
-                        ltype = [QGis.WKBPoint, QGis.WKBLineString, QGis.WKBPolygon][edim]
+                        ltype = [QgsWkbTypes.Point, QgsWkbTypes.LineString, QgsWkbTypes.Polygon][edim]
                         name = physicalNames.get((edim, p), None)
                         if name is None :
                             name = ["points", "lines", "elements"][edim] + ("_" + str(p) if p >= 0 else "")
                             physicalNames[(edim, p)] = name
                         path = os.path.join(outputdir, name)
-                        writer = QgsVectorFileWriter(path, "system", fields, ltype, crs)
+                        writer = QgsVectorFileWriter(path, "system", fields, ltype, crs,driverName="ESRI Shapefile")
                         writer.path = path
                         physicalWriter[(edim, p)] = writer
                     entityWriter[(edim, e)] = writer
-                points = list([QgsPoint(v[0], v[1]) for v in evertices])
+                points = list([QgsPointXY(v[0], v[1]) for v in evertices])
                 if edim == 0 :
-                    geom = QgsGeometry.fromPoint(points[0])
+                    geom = QgsGeometry.fromPointXY(points[0])
                 elif edim == 1 :
-                    geom = QgsGeometry.fromPolyline(points)
+                    geom = QgsGeometry.fromPolylineXY(points)
                 elif edim == 2 :
                     v = evertices[0]
-                    points.append(QgsPoint(v[0], v[1]))
-                    geom = QgsGeometry.fromPolygon([points])
+                    points.append(QgsPointXY(v[0], v[1]))
+                    geom = QgsGeometry.fromPolygonXY([points])
                 feature = QgsFeature()
                 feature.setGeometry(geom)
                 writer.addFeature(feature)
@@ -127,29 +129,28 @@ def loadMsh(filename, crs, outputdir):
     progress.setValue(100)
     for path in paths :
         l = QgsVectorLayer(path, QFileInfo(path).baseName(), "ogr")
-        QgsMapLayerRegistry.instance().addMapLayer(l, False)
+        QgsProject.instance().addMapLayer(l, False)
         group.addLayer(l) 
 
 
-class Dialog(QDialog) :
+class Dialog(QtWidgets.QDialog) :
 
     def __init__(self, mainWindow, iface) :
         super(Dialog, self).__init__(mainWindow)
         self.setWindowTitle("Convert a Gmsh mesh file into shapefiles")
-        layout = QVBoxLayout()
+        self.setMinimumWidth(800)
+        layout = QtWidgets.QVBoxLayout()
         self.inputMsh = tools.FileSelectorLayout("Mesh file",
             mainWindow, "open", "*.msh", layout)
-        self.projectionButton = tools.CRSButton()
+        self.projectionButton = QgsProjectionSelectionWidget()
         tools.TitleLayout("Projection", self.projectionButton, layout).label
         self.outputDir = tools.FileSelectorLayout("Output directory",
             mainWindow, "opendir", "", layout)
-        self.importShpBox = QCheckBox("Open generated files")
+        self.importShpBox = QtWidgets.QCheckBox("Open generated files")
         layout.addWidget(self.importShpBox)
         self.inputMsh.fileWidget.textChanged.connect(self.onInputFileChange)
         self.inputMsh.fileWidget.textChanged.connect(self.validate)
         self.outputDir.fileWidget.textChanged.connect(self.validate)
-        #QObject.connect(self.inputMsh.fileWidget, SIGNAL("textChanged()"), self.validate)
-        #QObject.connect(self.outputDir.fileWidget, SIGNAL("textChanged()"), self.validate)
         self.runLayout = tools.CancelRunLayout(self, "Convert", self.loadMsh, layout)
         self.runLayout.runButton.setEnabled(False)
         self.setLayout(layout)
@@ -201,11 +202,11 @@ class Dialog(QDialog) :
 
 def createAction(iface) :
     dialog = Dialog(iface.mainWindow(), iface)
-    action = QAction("Convert a Gmsh mesh file into shapefiles", iface.mainWindow())
+    action = QtWidgets.QAction("Convert a Gmsh mesh file into shapefiles", iface.mainWindow())
     action.dialog = dialog
     action.setWhatsThis("Convert a 2D Gmsh mesh file (.msh) into shapefiles (.shp). One shapefile is generated by physical tag in the mesh file.")
     action.setStatusTip("Convert a 2D Gmsh mesh file (.msh) into shapefiles (.shp). One shapefile is generated by physical tag in the mesh file.")
     action.setObjectName("GMSHImportMSH")
-    QObject.connect(action, SIGNAL("triggered()"), dialog.exec_)
+    action.triggered.connect(dialog.exec_)
     return action
 

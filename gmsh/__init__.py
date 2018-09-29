@@ -2,5 +2,5 @@
 # licence : GPLv2 (see LICENSE.md)
 
 def classFactory(iface) :
-    from mainPlugin import GmshPlugin
+    from .mainPlugin import GmshPlugin
     return GmshPlugin(iface)

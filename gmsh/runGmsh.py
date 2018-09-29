@@ -1,34 +1,35 @@
 # author  : Jonathan Lambrechts jonathan.lambrechts@uclouvain.be
 # licence : GPLv2 (see LICENSE.md)
 
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
-from qgis.core import *
+from PyQt5.QtCore import Qt,QSettings,QProcess,QProcessEnvironment
+from PyQt5.QtGui import QDoubleValidator
+from PyQt5 import QtWidgets
+from qgis.core import QgsProject
 import shlex
 import os
 
-import tools
+from . import tools
 
-class RunGmshDialog(QDialog) :
+class RunGmshDialog(QtWidgets.QDialog) :
 
     def __init__(self, mainWindow, loadMshDialog) :
         super(RunGmshDialog, self).__init__(mainWindow)
         self.setWindowTitle("Running Gmsh")
-        layout = QVBoxLayout()
-        self.textWidget = QPlainTextEdit()
+        layout = QtWidgets.QVBoxLayout()
+        self.textWidget = QtWidgets.QPlainTextEdit()
         self.textWidget.setReadOnly(True)
         layout.addWidget(self.textWidget)
-        hlayout = QHBoxLayout()
+        hlayout = QtWidgets.QHBoxLayout()
         layout.addLayout(hlayout)
         hlayout.addStretch(1)
-        self.loadMshBtn = QPushButton("Load mesh file")
+        self.loadMshBtn = QtWidgets.QPushButton("Load mesh file")
         self.loadMshBtn.clicked.connect(self.close)
         self.loadMshBtn.clicked.connect(loadMshDialog.exec_)
-        self.closeBtn = QPushButton("Close")
+        self.closeBtn = QtWidgets.QPushButton("Close")
         self.closeBtn.clicked.connect(self.close)
         hlayout.addWidget(self.loadMshBtn)
         hlayout.addWidget(self.closeBtn)
-        self.killBtn = QPushButton("Kill")
+        self.killBtn = QtWidgets.QPushButton("Kill")
         self.killBtn.clicked.connect(self.killp)
         hlayout.addWidget(self.killBtn)
         self.resize(600, 600)
@@ -41,7 +42,7 @@ class RunGmshDialog(QDialog) :
 
     def onStdOut(self) :
         while self.p.canReadLine() :
-            txt = str(self.p.readLine())[:-1]
+            txt = str(self.p.readLine().data(),"utf8")
             if txt.startswith("Error   : ") or txt.startswith("Fatal   : "):
                 self.log(txt[10:], "red")
             elif txt.startswith("Warning : ") :
@@ -105,12 +106,12 @@ class RunGmshDialog(QDialog) :
         super(RunGmshDialog, self).exec_()
 
 
-class MeshDialog(QDialog) :
+class MeshDialog(QtWidgets.QDialog) :
 
     def __init__(self, mainWindow, iface, loadMshDialog) :
         super(MeshDialog, self).__init__(mainWindow)
         self.setWindowTitle("Mesh a Gmsh geometry file")
-        layout = QVBoxLayout()
+        layout = QtWidgets.QVBoxLayout()
         self.gmshExe = tools.FileSelectorLayout("Gmsh executable",
             mainWindow, "open", "", layout, "")
         self.inputGeo = tools.FileSelectorLayout("Input geometry file",
@@ -121,18 +122,18 @@ class MeshDialog(QDialog) :
         self.inputGeo.fileWidget.textChanged.connect(self.validate)
         self.outputMsh.fileWidget.textChanged.connect(self.validate)
         self.gmshExe.fileWidget.textChanged.connect(self.validate)
-        self.algoSelector = QComboBox(self)
+        self.algoSelector = QtWidgets.QComboBox(self)
         self.algoSelector.addItem("Mesh Adapt", "meshadapt")
         self.algoSelector.addItem("Delaunay", "del2d")
         self.algoSelector.addItem("Frontal", "front2d")
         tools.TitleLayout("Meshing algorithm", self.algoSelector, layout)
-        self.epslc1d = QLineEdit()
+        self.epslc1d = QtWidgets.QLineEdit()
         self.epslc1d.setText("1e-3")
         validator = QDoubleValidator()
         validator.setNotation(QDoubleValidator.ScientificNotation)
         self.epslc1d.setValidator(validator)
         tools.TitleLayout("1D mesh size integration precision", self.epslc1d, layout)
-        self.commandLine = QLineEdit()
+        self.commandLine = QtWidgets.QLineEdit()
         tools.TitleLayout("Additional command line arguments", self.commandLine, layout)
         self.runLayout = tools.CancelRunLayout(self,"Mesh", self.mesh, layout)
         self.runLayout.runButton.setEnabled(False)
@@ -168,7 +169,7 @@ class MeshDialog(QDialog) :
         proj.writeEntry("gmsh", "extraargs", self.commandLine.text())
         proj.writeEntry("gmsh", "auto_msh_name", self.autoMshName)
         args = [self.gmshExe.getFile(), "-2", self.inputGeo.getFile(),
-            "-algo", algo,
+            "-algo", algo, "-format","msh2",
             "-epslc1d", self.epslc1d.text()] + shlex.split(self.commandLine.text())
         self.runGmshDialog.exec_(args)
 
@@ -190,10 +191,10 @@ class MeshDialog(QDialog) :
 
 def createAction(iface, loadMshDialog) :
     dialog = MeshDialog(iface.mainWindow(), iface, loadMshDialog)
-    action = QAction("Mesh a Gmsh geometry file", iface.mainWindow())
+    action = QtWidgets.QAction("Mesh a Gmsh geometry file", iface.mainWindow())
     action.dialog = dialog
     action.setObjectName("GMSHMesh")
     action.setWhatsThis("Call Gmsh (http://geuz.org/gmsh) to mesh a geometry (.geo) file.")
     action.setStatusTip("Call Gmsh (http://geuz.org/gmsh) to mesh a geometry (.geo) file.")
-    QObject.connect(action, SIGNAL("triggered()"), dialog.exec_)
+    action.triggered.connect(dialog.exec_)
     return action
