@@ -40,7 +40,7 @@ class FileSelectorLayout(QVBoxLayout) :
 
     def browseFile(self) :
         if self.action == "save" :
-            filename = QFileDialog.getSaveFileName(self.mainWindow,
+            filename,_ = QFileDialog.getSaveFileName(self.mainWindow,
                 self.title, filter=self.ext)
         elif self.action == "opendir" :
             filename = QFileDialog.getExistingDirectory(self.mainWindow,
