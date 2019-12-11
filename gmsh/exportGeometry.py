@@ -153,8 +153,10 @@ def writeRasterLayer(layer, filename) :
     progress.setValue(0)
     f = open(filename, "wb")
     ext = layer.extent()
-    f.write(struct.pack("3d", ext.xMinimum(), ext.yMinimum(), 0))
-    f.write(struct.pack("3d", ext.width() / layer.width(), ext.height() / layer.height(), 1))
+    dx = ext.width() / layer.width()
+    dy = ext.height() / layer.height()
+    f.write(struct.pack("3d", ext.xMinimum() + 0.5 * dx, ext.yMinimum() + 0.5 * dy, 0))
+    f.write(struct.pack("3d", dx, dy, 1))
     f.write(struct.pack("3i", layer.width(), layer.height(), 1))
     block = layer.dataProvider().block(1, layer.extent(), layer.width(), layer.height())
     for j in range(layer.width()) : 
