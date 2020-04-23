@@ -199,8 +199,14 @@ def exportGeo(filename, layers, insideLayers, sizeLayer, crs, forceAllBnd) :
             if physical_idx >= 0 :
                 physical = feature[physical_idx]
             if geom.type() == QgsWkbTypes.PolygonGeometry :
-                for loop in geom.asPolygon() :
-                    geo.addLineFromCoords(loop, xform, lc, physical, inside, forceAllBnd)
+                polys = geom.asMultiPolygon()
+                if not polys :
+                    for loop in geom.asPolygon() :
+                        geo.addLineFromCoords(loop, xform, lc, physical, inside, forceAllBnd)
+                else:
+                    for poly in polys:
+                        for loop in poly :
+                            geo.addLineFromCoords(loop, xform, lc, physical, inside, forceAllBnd)
             elif geom.type() == QgsWkbTypes.LineGeometry :
                 lines = geom.asMultiPolyline()
                 if not lines :
