@@ -57,6 +57,8 @@ class geoWriter :
         self.lineloops = []
         self.lineInSurface = []
         self.pointInSurface = []
+        self.surfaceInSurface = []
+        self.physicalsInnerSurface = {}
 
     def writePoint(self, pt, lc) :
         if lc is not None :
@@ -116,16 +118,23 @@ class geoWriter :
                     self.physicals[physical].append(lid)
                 else :
                     self.physicals[physical] = [lid]
-        if inside :
-            self.lineInSurface += lids
-            self.pointInSurface += ids
-        if not inside :
-            ll = lineloop(pts[0], pts[-1], id0, id1, lids)
+        ll = lineloop(pts[0], pts[-1], id0, id1, lids)
+        if inside and not ll.closed():
+                self.lineInSurface += lids
+                self.pointInSurface += ids
+        if not inside or ll.closed() :
             self.lineloops = [o for o in self.lineloops if not ll.merge(o)]
             if ll.closed() :
                 self.writeLineLoop(ll)
             else:
                 self.lineloops.append(ll)
+            if inside:
+                if physical :
+                    if physical in self.physicalsInnerSurface :
+                        self.physicalsInnerSurface[physical].append(len(self.surfaceInSurface))
+                    else :
+                        self.physicalsInnerSurface[physical] = [len(self.surfaceInSurface)]
+                self.surfaceInSurface.append(ll)
 
     def setBackgroundField(self, filename) :
         self.geof.write("NF = newf;\n")
@@ -141,6 +150,13 @@ class geoWriter :
             self.geof.write("Line {" + ",".join(["IP+%d" % i for i in self.lineInSurface]) + "} In Surface{IS};\n")
         if self.pointInSurface :
             self.geof.write("Point {" + ",".join(["IL+%d" % i for i in self.pointInSurface]) + "} In Surface{IS};\n")
+        for iS, innerS in enumerate(self.surfaceInSurface):
+            ill = self.writeLineLoop(innerS)
+            self.geof.write("Plane Surface(IS+%d) = {ILL+%d};\n"%(iS+1,ill))
+        print(self.physicalsInnerSurface)
+        for tag, ids in self.physicalsInnerSurface.items() :
+            print(tag,ids)
+            self.geof.write("Physical Surface(\"" + tag + "\") = {" + ",".join(("IS + " + str(i+1)) for i in ids) + "};\n")
         for tag, ids in self.physicals.items() :
             self.geof.write("Physical Line(\"" + tag + "\") = {" + ",".join(("IL + " + str(i)) for i in ids) + "};\n")
         self.geof.close()
@@ -199,8 +215,14 @@ def exportGeo(filename, layers, insideLayers, sizeLayer, crs, forceAllBnd) :
             if physical_idx >= 0 :
                 physical = feature[physical_idx]
             if geom.type() == QgsWkbTypes.PolygonGeometry :
-                for loop in geom.asPolygon() :
-                    geo.addLineFromCoords(loop, xform, lc, physical, inside, forceAllBnd)
+                polys = geom.asMultiPolygon()
+                if not polys :
+                    for loop in geom.asPolygon() :
+                        geo.addLineFromCoords(loop, xform, lc, physical, inside, forceAllBnd)
+                else:
+                    for poly in polys:
+                        for loop in poly :
+                            geo.addLineFromCoords(loop, xform, lc, physical, inside, forceAllBnd)
             elif geom.type() == QgsWkbTypes.LineGeometry :
                 lines = geom.asMultiPolyline()
                 if not lines :
