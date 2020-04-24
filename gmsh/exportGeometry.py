@@ -146,13 +146,14 @@ class geoWriter :
     def __del__(self) :
         self.geof.write("Plane Surface(IS) = {ILL:ILL+%d};\n" % (self.ill - 1))
         self.geof.write("Physical Surface(\"Domain\") = {IS};\n")
-        if self.lineInSurface :
-            self.geof.write("Line {" + ",".join(["IP+%d" % i for i in self.lineInSurface]) + "} In Surface{IS};\n")
-        if self.pointInSurface :
-            self.geof.write("Point {" + ",".join(["IL+%d" % i for i in self.pointInSurface]) + "} In Surface{IS};\n")
         for iS, innerS in enumerate(self.surfaceInSurface):
             ill = self.writeLineLoop(innerS)
             self.geof.write("Plane Surface(IS+%d) = {ILL+%d};\n"%(iS+1,ill))
+        for iS in range(len(self.surfaceInSurface)+1):
+            if self.lineInSurface :
+                self.geof.write("Line {" + ",".join(["IP+%d" % i for i in self.lineInSurface]) + "} In Surface{IS+%d};\n"%(iS))
+            if self.pointInSurface :
+                self.geof.write("Point {" + ",".join(["IL+%d" % i for i in self.pointInSurface]) + "} In Surface{IS+%d};\n"%(iS))
         print(self.physicalsInnerSurface)
         for tag, ids in self.physicalsInnerSurface.items() :
             print(tag,ids)
