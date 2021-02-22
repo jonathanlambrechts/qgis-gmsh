@@ -1,7 +1,5 @@
 # qgis-gmsh
 Generate geometry input files for the GMSH mesh generator (http://geuz.org/gmsh) and convert the GMSH mesh file to shapefiles that can be imported into QGIS.
-The [nightly snaphshot](http://geuz.org/gmsh/#Download) version of GMSH is required to mesh the generated .geo files.
-
 
 ## Installation
 Copy the `gmsh` sub-directory in your QGIS "/python/plugin/" directory (e.g. ~/AppData/Roaming/QGIS/QGIS3/profiles/default/python/plugins under Windows 10). Then enable it through the "Plugins>Manage and Install Plugins..." menu.
