@@ -3,139 +3,113 @@
 
 from PyQt5.QtCore import Qt,QDir,QThread,QFileInfo,QFile
 from PyQt5 import QtWidgets
-from qgis.core import QgsProject,QgsFields,QgsVectorFileWriter,QgsPointXY,QgsFeature,QgsWkbTypes,QgsGeometry,QgsCoordinateReferenceSystem,QgsVectorLayer
-from . import gmshType
+from qgis.core import QgsProject,QgsFeature,QgsGeometry,QgsCoordinateReferenceSystem,QgsVectorLayer
+from qgis import processing
 import os
 from . import tools
 from qgis.gui import QgsProjectionSelectionWidget
+import numpy as np
 
-def loadMsh(filename, crs, outputdir):
-    progress = QtWidgets.QProgressDialog("Converting GMSH mesh...", "Abort", 0, 100)
+def loadMsh(filename, crs):
+    import gmsh
+    progress = QtWidgets.QProgressDialog("Reading mesh...", "Abort", 0, 30)
     progress.setMinimumDuration(1000)
     progress.setWindowModality(Qt.WindowModal)
-    QDir().mkpath(outputdir)
-    fin = open(filename, "r");
-    l = fin.readline()
-    useFormat3 = False
-    vertices = {}
-    physicalNames = {}
-    entityPhysical = {}
-    physicalWriter = {}
-    entityWriter = {}
-    def abort() :
-        for writer in physicalWriter.values() :
-            QgsVectorFileWriter.deleteShapeFile(writer.path + ".shp")
-            QFile.remove(writer.path + ".cpg")
-    while l != "" :
-        w = l.split()
-        if w[0] == "$MeshFormat":
-            l = fin.readline().split()
-            if int(float(l[0])) == 3:
-                useFormat3 = True
-            elif int(float(l[0])) == 2 :
-                useFormat3 = False 
-            else :
-                raise ValueError("cannot read mesh format " + l[0])
-            l = fin.readline()
-        elif w[0] == "$PhysicalNames" :
-            n = int(fin.readline())
-            for i in range(n) :
-                dim, tag, name = fin.readline().split()
-                physicalNames[(int(dim), int(tag))] = name[1:-1]
-            fin.readline()
-        elif w[0] == "$Entities" and useFormat3:
-            ns = list(int(fin.readline()) for i in range(4))
-            for dim in range (4) :
-                for i in range(ns[dim]) :
-                    l = fin.readline().split()
-                    j, nbnd = int(l[0]), int(l[1])
-                    nphys = int(l[2+nbnd])
-                    entityPhysical[(dim, j)] = int(l[2+nbnd+nphys]) if nphys > 0 else None
-        elif w[0] == "$Nodes" :
-            n = int(fin.readline())
-            for i in range(n) :
-                if i % 1000 == 0 :
-                    QtWidgets.QApplication.processEvents()
-                    progress.setValue((7 * i)/n)
-                    if progress.wasCanceled():
-                        abort()
-                        return
-                if useFormat3 :
-                    j, x, y, z  = fin.readline().split()[:4]
-                else :
-                    (j, x, y, z) = fin.readline().split()
-                vertices[int(j)] = [float(x), float(y), float(z), int(j)]
-        elif w[0] == "$Elements" :
-            n = int(fin.readline())
-            for i in range(n) :
-                if i % 100 == 0 :
-                    QtWidgets.QApplication.processEvents()
-                    if progress.wasCanceled():
-                        abort()
-                        return
-                if i % 1000 == 0 :
-                    progress.setValue(7 + (93 * i)/n)
-                l = fin.readline().split()
-                if useFormat3 :
-                    j, t, e, nf = int(l[0]), int(l[1]), int(l[2]), int(l[3])
-                    nv = gmshType.Type[t].numVertices
-                    evertices = [vertices[int(i)] for i in l[4:4+nv]]
-                    partition = [int(i) for i in l[5 + nv : 5 + nv + int(l[4 + nv])]] if nf > nv else []
-                else :
-                    j, t, nf, p, e = int(l[0]), int(l[1]), int(l[2]), int(l[3]), int(l[4])
-                    evertices = [vertices[int(i)] for i in l[3 + nf:]]
-                    partition = [int(i) for i in l[6 : 6 + int(l[5])]] if nf > 2 else []
-                edim = gmshType.Type[t].baseType.dimension
-                writer = entityWriter.get((edim, e), None)
-                if writer is None :
-                    if useFormat3 :
-                        if (edim, e) in entityPhysical :
-                            p = entityPhysical[(edim, e)]
-                        else :
-                            p = 0
-                    writer = physicalWriter.get((edim, p), None)
-                    if writer is None :
-                        fields = QgsFields()
-                        ltype = [QgsWkbTypes.Point, QgsWkbTypes.LineString, QgsWkbTypes.Polygon][edim]
-                        name = physicalNames.get((edim, p), None)
-                        if name is None :
-                            name = ["points", "lines", "elements"][edim] + ("_" + str(p) if p >= 0 else "")
-                            physicalNames[(edim, p)] = name
-                        path = os.path.join(outputdir, name)
-                        writer = QgsVectorFileWriter(path, "system", fields, ltype, crs,driverName="ESRI Shapefile")
-                        writer.path = path
-                        physicalWriter[(edim, p)] = writer
-                    entityWriter[(edim, e)] = writer
-                points = list([QgsPointXY(v[0], v[1]) for v in evertices])
-                if edim == 0 :
-                    geom = QgsGeometry.fromPointXY(points[0])
-                elif edim == 1 :
-                    geom = QgsGeometry.fromPolylineXY(points)
-                elif edim == 2 :
-                    v = evertices[0]
-                    points.append(QgsPointXY(v[0], v[1]))
-                    geom = QgsGeometry.fromPolygonXY([points])
-                feature = QgsFeature()
-                feature.setGeometry(geom)
-                writer.addFeature(feature)
-        l = fin.readline()
-
-    group = QgsProject.instance().layerTreeRoot().addGroup("mesh")
+    gmsh.initialize()
+    progress.setValue(1)
+    QtWidgets.QApplication.processEvents()
+    if progress.wasCanceled(): return
+    gmsh.open(filename)
+    progress.setValue(10)
+    QtWidgets.QApplication.processEvents()
+    nodes_tag, nodes_xyz, _ = gmsh.model.mesh.get_nodes()
+    nodes_xyz = nodes_xyz.reshape(-1, 3)
+    nodes_order = nodes_tag.argsort()
     paths = []
-    for writer in physicalWriter.values() :
-        paths.append(writer.path + ".shp")
-        del writer
-    QThread.sleep(1)
-    progress.setValue(100)
-    for path in paths :
-        l = QgsVectorLayer(path, QFileInfo(path).baseName(), "ogr")
-        QgsProject.instance().addMapLayer(l, False)
-        group.addLayer(l) 
+    elements = {}
+    written = []
+    def get_xyz(e):
+        return nodes_xyz[nodes_order[np.searchsorted(nodes_tag, e, sorter=nodes_order)]]
+    def get_entity(edim, etag, els):
+        QtWidgets.QApplication.processEvents()
+        if progress.wasCanceled(): return
+        if edim == 0:
+            els.append(get_xyz(gmsh.model.mesh.get_elements_by_type(15, etag)[1]))
+        if edim == 1:
+            els.append(get_xyz(gmsh.model.mesh.get_elements_by_type(1, etag)[1].reshape(-1,2)))
+        if edim == 2:
+            els.append(get_xyz(gmsh.model.mesh.get_elements_by_type(2, etag)[1].reshape(-1,3)))
+            els.append(get_xyz(gmsh.model.mesh.get_elements_by_type(3, etag)[1].reshape(-1,4)))
+    loaded_entities = []
+    for pdim, ptag in gmsh.model.get_physical_groups():
+        if pdim > 2: continue
+        name = gmsh.model.get_physical_name(pdim, ptag)
+        if name is None:
+            name = "physical_"+str(pdim)+"_"+str(ptag)
+        els = []
+        for etag in gmsh.model.get_entities_for_physical_group(pdim, ptag):
+            get_entity(pdim, etag, els)
+            loaded_entities.append((pdim,etag))
+            elements[name] = (pdim, els)
+    for edim, etag in gmsh.model.get_entities():
+        if edim > 2: continue
+        if (edim,etag) in loaded_entities: continue
+        name = "entity_"+str(edim)+"_"+str(etag)
+        els = []
+        get_entity(edim, etag, els)
+        elements[name] = (edim, els)
+    progress.setValue(20)
+    progress.setLabelText("Writing elements...")
+
+    group = QgsProject.instance().layerTreeRoot().addGroup(QFileInfo(filename).baseName())
+    dtypes = [np.dtype([("o",np.byte), ("t",np.uint32),("x",np.float64,2)], align=False),
+              np.dtype([("o",np.byte), ("t",np.uint32), ("n",np.uint32),("x",np.float64,(2,2))], align=False),
+              np.dtype([("o",np.byte), ("t",np.uint32), ("n",np.uint32), ("m",np.uint32),("x",np.float64,(4,2))], align=False)]
+    for name, (pdim, elements) in elements.items():
+        QtWidgets.QApplication.processEvents()
+        if progress.wasCanceled(): return
+        if pdim != 2 and pdim != 1: continue
+        layer = QgsVectorLayer(["MultiPoint","MultiLineString","MultiPolygon"][pdim],name,"memory")
+        layer.setCrs(crs)
+        prov = layer.dataProvider()
+
+        for els in elements:
+            if els.shape[0] == 0: continue
+            wkbn = np.empty(els.shape[0], dtype=dtypes[pdim])
+            wkbn["o"][:] = 1
+            wkbn["t"][:] = pdim+1
+            if pdim == 2:
+                wkbn["n"][:] = 1
+                wkbn["m"][:] = 4
+                wkbn["x"][:,:3,:] = els[:,:,:2]
+                wkbn["x"][:,3,:] = els[:,0,:2]
+            elif pdim == 1:
+                wkbn["n"][:] = 2
+                wkbn["x"][:,:,:] = els[:,:,:2]
+            else:
+                wkbn["x"][:,:] = els[:,0,:2]
+            wkb = b'\x01'+np.array((pdim+4,els.shape[0]),np.uint32).tobytes()+wkbn.tobytes()
+            geom = QgsGeometry()
+            geom.fromWkb(wkb)
+            feature = QgsFeature()
+            feature.setGeometry(geom)
+            prov.addFeature(feature)
+        QtWidgets.QApplication.processEvents()
+        if progress.wasCanceled(): return
+        layer.updateExtents()
+        alg = processing.run("qgis:multiparttosingleparts",{'INPUT': layer, 'OUTPUT': 'TEMPORARY_OUTPUT'})
+        layer = alg['OUTPUT']
+        layer.setName(name)
+        layer = QgsProject.instance().addMapLayer(layer, False)
+        group.addLayer(layer) 
+    progress.setValue(30)
+    return
 
 
 class Dialog(QtWidgets.QDialog) :
 
     def __init__(self, mainWindow, iface) :
+        self.mainWindow = mainWindow
         super(Dialog, self).__init__(mainWindow)
         self.setWindowTitle("Convert a Gmsh mesh file into shapefiles")
         self.setMinimumWidth(800)
@@ -144,13 +118,7 @@ class Dialog(QtWidgets.QDialog) :
             mainWindow, "open", "*.msh", layout)
         self.projectionButton = QgsProjectionSelectionWidget()
         tools.TitleLayout("Projection", self.projectionButton, layout).label
-        self.outputDir = tools.FileSelectorLayout("Output directory",
-            mainWindow, "opendir", "", layout)
-        self.importShpBox = QtWidgets.QCheckBox("Open generated files")
-        layout.addWidget(self.importShpBox)
-        self.inputMsh.fileWidget.textChanged.connect(self.onInputFileChange)
         self.inputMsh.fileWidget.textChanged.connect(self.validate)
-        self.outputDir.fileWidget.textChanged.connect(self.validate)
         self.runLayout = tools.CancelRunLayout(self, "Convert", self.loadMsh, layout)
         self.runLayout.runButton.setEnabled(False)
         self.setLayout(layout)
@@ -158,15 +126,9 @@ class Dialog(QtWidgets.QDialog) :
         self.resize(max(400, self.width()), self.height())
         self.validate()
 
-    def onInputFileChange(self, text) :
-        if (self.outputDir.getFile() == "" or self.autoShapeName) and text.endswith(".msh") :
-            self.outputDir.setFile(text[:-4]+"_shp")
-
     def validate(self) :
         inF = self.inputMsh.getFile()
-        outF = self.outputDir.getFile()
-        self.autoShapeName = inF.endswith(".msh") and outF == inF[:-4] + "_shp"
-        if os.path.isfile(inF) and outF != "" :
+        if os.path.isfile(inF) :
             self.runLayout.runButton.setEnabled(True)
         else :
             self.runLayout.runButton.setEnabled(False)
@@ -174,21 +136,17 @@ class Dialog(QtWidgets.QDialog) :
     def loadMsh(self) :
         self.close()
         inputFile = self.inputMsh.getFile()
-        outputDir = self.outputDir.getFile()
         crs = self.projectionButton.crs()
-        importShp = self.importShpBox.checkState() == Qt.Checked
         proj = QgsProject.instance()
         proj.writeEntry("gmsh", "msh_file", inputFile)
-        proj.writeEntry("gmsh", "shp_directory", outputDir)
         proj.writeEntry("gmsh", "projection", crs.authid())
-        proj.writeEntry("gmsh", "import_shp", importShp)
-        loadMsh(self.inputMsh.getFile(), crs, self.outputDir.getFile())
+        if not tools.install_gmsh_if_needed(self.mainWindow):
+            return
+        loadMsh(self.inputMsh.getFile(), crs)
 
     def exec_(self) :
         proj = QgsProject.instance()
-        self.outputDir.setFile(proj.readEntry("gmsh", "shp_directory", "")[0])
         self.inputMsh.setFile(proj.readEntry("gmsh", "msh_file", "")[0])
-        self.importShpBox.setCheckState(Qt.Checked if proj.readBoolEntry("gmsh", "import_shp", True)[0] else Qt.Unchecked)
         self.runLayout.setFocus()
         projid = proj.readEntry("gmsh", "projection", "")[0]
         crs = None
@@ -202,7 +160,7 @@ class Dialog(QtWidgets.QDialog) :
 
 def createAction(iface) :
     dialog = Dialog(iface.mainWindow(), iface)
-    action = QtWidgets.QAction("Convert a Gmsh mesh file into shapefiles", iface.mainWindow())
+    action = QtWidgets.QAction("Import a Gmsh mesh file", iface.mainWindow())
     action.dialog = dialog
     action.setWhatsThis("Convert a 2D Gmsh mesh file (.msh) into shapefiles (.shp). One shapefile is generated by physical tag in the mesh file.")
     action.setStatusTip("Convert a 2D Gmsh mesh file (.msh) into shapefiles (.shp). One shapefile is generated by physical tag in the mesh file.")

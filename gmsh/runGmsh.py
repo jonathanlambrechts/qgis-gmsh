@@ -6,6 +6,7 @@ from PyQt5.QtGui import QDoubleValidator
 from PyQt5 import QtWidgets
 from qgis.core import QgsProject
 import shlex
+import sys
 import os
 
 from . import tools
@@ -112,8 +113,6 @@ class MeshDialog(QtWidgets.QDialog) :
         super(MeshDialog, self).__init__(mainWindow)
         self.setWindowTitle("Mesh a Gmsh geometry file")
         layout = QtWidgets.QVBoxLayout()
-        self.gmshExe = tools.FileSelectorLayout("Gmsh executable",
-            mainWindow, "open", "", layout, "")
         self.inputGeo = tools.FileSelectorLayout("Input geometry file",
             mainWindow, "open", "*.geo", layout)
         self.outputMsh = tools.FileSelectorLayout("Output mesh file",
@@ -121,12 +120,17 @@ class MeshDialog(QtWidgets.QDialog) :
         self.inputGeo.fileWidget.textChanged.connect(self.onInputFileChange)
         self.inputGeo.fileWidget.textChanged.connect(self.validate)
         self.outputMsh.fileWidget.textChanged.connect(self.validate)
-        self.gmshExe.fileWidget.textChanged.connect(self.validate)
         self.algoSelector = QtWidgets.QComboBox(self)
         self.algoSelector.addItem("Mesh Adapt", "meshadapt")
         self.algoSelector.addItem("Delaunay", "del2d")
         self.algoSelector.addItem("Frontal", "front2d")
         tools.TitleLayout("Meshing algorithm", self.algoSelector, layout)
+        self.formatSelector = QtWidgets.QComboBox(self)
+        self.formatSelector.addItem(".msh version 2", "msh2")
+        self.formatSelector.addItem(".msh version 4", "msh4")
+        self.formatSelector.addItem(".stl", "stl")
+        self.formatSelector.addItem(".cgns", "cgns")
+        tools.TitleLayout("Mesh file format", self.formatSelector, layout)
         self.epslc1d = QtWidgets.QLineEdit()
         self.epslc1d.setText("1e-3")
         validator = QDoubleValidator()
@@ -141,46 +145,44 @@ class MeshDialog(QtWidgets.QDialog) :
         self.setMaximumHeight(self.height())
         self.runGmshDialog = RunGmshDialog(iface.mainWindow(), loadMshDialog)
         self.resize(max(400, self.width()), self.height())
+        self.mainWindow = mainWindow
 
     def onInputFileChange(self, text) :
         if (self.outputMsh.getFile() == "" or self.autoMshName) and text.endswith(".geo") :
             self.outputMsh.setFile(text[:-4]+".msh")
 
     def validate(self) :
-        gmshExe = self.gmshExe.getFile()
         inputGeo = self.inputGeo.getFile()
         outputMsh = self.outputMsh.getFile()
         self.autoMshName = inputGeo.endswith(".geo") and (outputMsh == inputGeo[:-4] + ".msh" or outputMsh == "")
-        if os.path.isfile(inputGeo) and os.path.isfile(gmshExe) and outputMsh != "":
-            self.runLayout.runButton.setEnabled(True)
-        else :
-            self.runLayout.runButton.setEnabled(False)
+        self.runLayout.runButton.setEnabled(True)
 
     def mesh(self) :
         self.close()
-        settings = QSettings()
-        settings.setValue("gmsh/executable", self.gmshExe.getFile())
         algo = self.algoSelector.itemData(self.algoSelector.currentIndex())
+        fmt =self.formatSelector.currentIndex()
         proj = QgsProject.instance()
         proj.writeEntry("gmsh", "geo_file", self.inputGeo.getFile())
         proj.writeEntry("gmsh", "msh_file", self.outputMsh.getFile())
         proj.writeEntry("gmsh", "algorithm", self.algoSelector.currentText())
+        proj.writeEntry("gmsh", "msh_format", fmt)
         proj.writeEntry("gmsh", "epslc1d", self.epslc1d.text())
         proj.writeEntry("gmsh", "extraargs", self.commandLine.text())
         proj.writeEntry("gmsh", "auto_msh_name", self.autoMshName)
-        args = [self.gmshExe.getFile(), "-2", self.inputGeo.getFile(),
-            "-algo", algo, "-format","msh2",
+        if not tools.install_gmsh_if_needed(self.mainWindow):
+            return
+        args = [sys.executable, "-c","import gmsh; import sys; argv=['gmsh']+sys.argv[1:];gmsh.initialize(argv,run=True); gmsh.finalize();", "-2", self.inputGeo.getFile(),
+            "-algo", algo, "-format",fmt,
             "-epslc1d", self.epslc1d.text()] + shlex.split(self.commandLine.text())
         self.runGmshDialog.exec_(args)
 
     def exec_(self) :
         proj = QgsProject.instance()
-        settings = QSettings()
-        self.gmshExe.setFile(settings.value("gmsh/executable", "gmsh"))
         self.outputMsh.setFile(proj.readEntry("gmsh", "msh_file", "")[0])
         self.inputGeo.setFile(proj.readEntry("gmsh", "geo_file", "")[0])
         idx = self.algoSelector.findText(proj.readEntry("gmsh", "algorithm", "Frontal")[0])
         self.algoSelector.setCurrentIndex(idx)
+        self.formatSelector.setCurrentIndex(proj.readEntry("gmsh", "msh_fmt")[0])
         self.epslc1d.setText(proj.readEntry("gmsh", "epslc1d", "1e-3")[0])
         self.commandLine.setText(proj.readEntry("gmsh", "extraargs", "")[0])
         self.runLayout.setFocus()
