@@ -7,7 +7,17 @@ from PyQt5.QtGui import QIcon
 from qgis.gui import QgsProjectionSelectionTreeWidget
 from qgis.core import *
 import sys
+import glob
+import os
+import importlib
+import urllib.request
+from zipfile import ZipFile
+import re
+import io
 
+if sys.platform == "win32":
+    windows_install_path = os.path.dirname(__file__)+'/gmsh_install' 
+    sys.path.append(windows_install_path)
 
 class RunPipDialog(QtWidgets.QDialog) :
 
@@ -70,19 +80,71 @@ class RunPipDialog(QtWidgets.QDialog) :
         self.p.start(args[0], args[1:])
         super(RunPipDialog, self).exec_()
 
+
+def get_latest_gmsh_windows_version():
+    with urllib.request.urlopen('http://gmsh.info/python-packages/gmsh') as url:
+        data = url.read()
+        last = (b"", (0,0,0))
+        for i in re.findall(b'href="(.*-win_amd64.whl)"', data):
+            file = i
+            version = tuple(int(j) for j in file.split(b"-")[1].split(b".")[:3])
+            if (version[0] > last[1][0] or (version[0] == last[1][0] and version[1] > last[1][1])
+                or (version[:2] == last[1][:2] and version[2] >= last[1][2])):
+                last = (file, version)
+        if last[1][0] == 0:
+            return None
+        return "http://gmsh.info/python-packages/gmsh/"+last[0].decode()
+
+def download_gmsh_windows(dirpath):
+    progress = QtWidgets.QProgressDialog("Install gmsh python module", None, 0, 107)
+    progress.setWindowModality(Qt.WindowModal)
+    progress.setMinimumDuration(1000)
+    progress.setValue(1)
+    progress.setLabelText("Determine latest gmsh version")
+    latest = get_latest_gmsh_windows_version()
+    progress.setValue(2)
+    progress.setLabelText(f"Download {latest.split('/')[-1]}")
+    os.makedirs(dirpath, exist_ok=True)
+    with urllib.request.urlopen(latest) as url:
+        length = int(url.getheader("Content-Length"))
+        clength = (length-1)//100+1
+        with io.BytesIO() as f:
+            for i in range(100):
+                progress.setValue(i+3)
+                f.write(url.read(clength))
+            f.seek(0)
+            with ZipFile(f, "r") as zfile:
+                progress.setValue(progress.value()+1)
+                for fname in zfile.namelist():
+                    if fname == "gmsh.py" or fname[-4:] == ".dll":
+                        bname = os.path.basename(fname)
+                        progress.setLabelText(f"extracting {fname.split('/')[-1]}")
+                        progress.setValue(progress.value()+1)
+                        with open(os.path.join(dirpath, bname), "wb") as ofile:
+                                with zfile.open(fname) as ifile:
+                                    ofile.write(ifile.read())
+                        progress.setValue(progress.value()+1)
+
 def install_gmsh_if_needed(mainWindow):
     try :
         import gmsh
         return True
     except:
-        RunPipDialog(mainWindow).exec_([sys.executable, '-m', 'pip', 'install', 'gmsh'])
+        if sys.platform == "win32":
+            download_gmsh_windows(windows_install_path)
+            #pythonexe = glob.glob(os.path.dirname(sys.executable)+"/../apps/Python*/python.exe")[0]
+            #RunPipDialog(mainWindow).exec_([pythonexe, '-m', 'pip', 'install', '-i', 'http://gmsh.info/python-packages/', '--trusted-host=gmsh.info', 'gmsh'])
+        else:
+            pythonexe = sys.executable
+            RunPipDialog(mainWindow).exec_([pythonexe, '-m', 'pip', 'install', 'gmsh'])
     finally:
         try :
+            importlib.invalidate_caches()
             import gmsh
             return True
         except :
+            raise ValueError("cannot install gmsh python module")
             return False
-
 
 class TitleLayout(QtWidgets.QVBoxLayout) :
 

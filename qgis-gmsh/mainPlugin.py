@@ -19,8 +19,13 @@ class GmshPlugin:
         self.iface.addPluginToMenu("&Gmsh", self.loadMshAction)
 
     def unload(self):
-        pass
         self.iface.removePluginMenu("&Gmsh", self.geoAction)
         self.iface.removePluginMenu("&Gmsh", self.meshAction)
         self.iface.removePluginMenu("&Gmsh", self.loadMshAction)
+        try :
+            import gmsh
+            import ctypes
+            ctypes.windll.kernel32.FreeLibrary(gmsh.lib._handle)
+        except:
+            pass
 
