@@ -160,7 +160,7 @@ class MeshDialog(QtWidgets.QDialog) :
     def mesh(self) :
         self.close()
         algo = self.algoSelector.itemData(self.algoSelector.currentIndex())
-        fmt =self.formatSelector.currentIndex()
+        fmt = self.formatSelector.itemData(self.formatSelector.currentIndex())
         proj = QgsProject.instance()
         proj.writeEntry("gmsh", "geo_file", self.inputGeo.getFile())
         proj.writeEntry("gmsh", "msh_file", self.outputMsh.getFile())
@@ -173,7 +173,7 @@ class MeshDialog(QtWidgets.QDialog) :
             return
         args = [sys.executable, "-c","import gmsh; import sys; argv=['gmsh']+sys.argv[1:];gmsh.initialize(argv,run=True); gmsh.finalize();", "-2", self.inputGeo.getFile(),
             "-algo", algo, "-format",fmt,
-            "-epslc1d", self.epslc1d.text()] + shlex.split(self.commandLine.text())
+            "-epslc1d", self.epslc1d.text(), "-o", self.outputMsh.getFile()] + shlex.split(self.commandLine.text())
         self.runGmshDialog.exec_(args)
 
     def exec_(self) :
@@ -182,7 +182,8 @@ class MeshDialog(QtWidgets.QDialog) :
         self.inputGeo.setFile(proj.readEntry("gmsh", "geo_file", "")[0])
         idx = self.algoSelector.findText(proj.readEntry("gmsh", "algorithm", "Frontal")[0])
         self.algoSelector.setCurrentIndex(idx)
-        self.formatSelector.setCurrentIndex(proj.readEntry("gmsh", "msh_fmt")[0])
+        idx = self.formatSelector.findData(proj.readEntry("gmsh", "msh_format", "msh4")[0])
+        self.formatSelector.setCurrentIndex(idx)
         self.epslc1d.setText(proj.readEntry("gmsh", "epslc1d", "1e-3")[0])
         self.commandLine.setText(proj.readEntry("gmsh", "extraargs", "")[0])
         self.runLayout.setFocus()

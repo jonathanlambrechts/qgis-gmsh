@@ -1,18 +1,21 @@
 [general]
-name=GMSH
+name=QGIS-GMSH
 email=jonathan.lambrechts@uclouvain.be
 author=Jonathan Lambrechts
 qgisMinimumVersion=3.0
 description=This is a plugin to interract with the GMSH mesh generator (see http://geuz.org/gmsh).
-about= Generate geometry input files for the GMSH mesh generator (http://geuz.org/gmsh) and convert the GMSH mesh file to shapefiles that can be imported into QGIS. The nightly snaphshot(http://geuz.org/gmsh/#Download) version of GMSH is required to mesh the generated .geo files. For more details, see this tutorial : https://github.com/ccorail/qgis-gmsh/wiki.
-version=version 0.2.1
-tracker=https://github.com/ccorail/qgis-gmsh/issues
-repository=https://github.com/ccorail/qgis-gmsh/
+about= Generate geometry input files for the GMSH mesh generator (http://geuz.org/gmsh) and convert the GMSH mesh file to shapefiles that can be imported into QGIS. The nightly snaphshot(http://geuz.org/gmsh/#Download) version of GMSH is required to mesh the generated .geo files. For more details, see this tutorial : https://github.com/jonathanlambrechts/qgis-gmsh/wiki.
+version=version 0.2.4
+tracker=https://github.com/jonathanlambrechts/qgis-gmsh/issues
+repository=https://github.com/jonathanlambrechts/qgis-gmsh/
 ; end of mandatory metadata
 
 ; start of optional metadata
 category=Vector
 changelog=
+  0.2.4 fix run gmsh dialog
+  0.2.3 renamed to qgis-gmsh and use gmsh python library to load msh files
+  0.2.2 bug fix multipolygon
   0.2.1 bug fix qt5 file chooser
   0.2.0 update to qgis3, fix msh 3 file format reading, use Spline instead of line
   0.1.3 bug fix when loading msh 3.0 file format
@@ -27,7 +30,7 @@ changelog=
 tags=vector,gmsh,mesh
 
 ; these metadata can be empty, they will eventually become mandatory.
-homepage=https://github.com/ccorail/qgis-gmsh/
+homepage=https://github.com/jonathanlambrechts/qgis-gmsh/
 ;icon=icon.png
 
 ; experimental flag (applies to the single version)
